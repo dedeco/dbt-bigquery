@@ -46,28 +46,35 @@ with DAG(
         """,
     )
 
-    # Run dbt without virtual environment setup
+    # For Composer 1.9.1, we need to use python -m dbt instead of the dbt command directly
     run_dbt_models = BashOperator(
         task_id="run_dbt_models",
         bash_command=f"""
             set -e
+            
             # Verify directory exists and navigate to it
             if [ ! -d "{DBT_ROOT_PATH}" ]; then
                 echo "DBT project directory not found at {DBT_ROOT_PATH}"
                 exit 1
             fi
             cd {DBT_ROOT_PATH}
-
-            # Run the dbt command with full paths
-            dbt run --profiles-dir {DBT_ROOT_PATH} --target dev --profile {DBT_PROFILE}
+            
+            echo "Checking installed packages..."
+            pip list | grep dbt
+            
+            echo "Running dbt using Python module approach..."
+            # Run dbt as a Python module, which should work if dbt-bigquery is installed
+            python -m dbt run --profiles-dir {DBT_ROOT_PATH} --target dev --profile {DBT_PROFILE}
         """,
         env={
             'DBT_BIGQUERY_PROJECT': BIGQUERY_PROJECT,
             'DBT_BIGQUERY_DATASET': BIGQUERY_DATASET,
+            # Add PYTHONPATH to ensure Python can find modules - adjust Python version if needed
+            'PYTHONPATH': '/usr/local/lib/python3.7/site-packages:/home/airflow/.local/lib/python3.7/site-packages:$PYTHONPATH',
         },
     )
 
     end = EmptyOperator(task_id='end')
 
-    # Define the task dependencies - removed the setup_dbt_venv task
+    # Define the task dependencies
     start >> copy_dbt_project >> run_dbt_models >> end
